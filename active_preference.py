@@ -55,14 +55,20 @@ If query is None, two points of the last query are compared.
             p = query[1]
             q = query[0]
 
-        if p not in self._x:
+        pbool = [np.all(x == p) for x in self._x]
+        qbool = [np.all(x == q) for x in self._x]
+
+        if np.any(pbool):
+            self._u.append(pbool.index(True))
+        else:
+            self._u.append(len(self._x))
             self._x.append(p)
 
-        if q not in self._x:
+        if np.any(qbool):
+            self._v.append(qbool.index(True))
+        else:
+            self._v.append(len(self._x))
             self._x.append(q)
-
-        self._u.append(self._x.index(p))
-        self._v.append(self._x.index(q))
 
         self._kernel.X = self._x
         self._maximize_posterior()
@@ -113,7 +119,7 @@ If query is None, two points of the last query are compared.
 
         return -0.5*np.sum(alpha**2)
 
-    def _log_unnorm_posterior(self, f=None):
+    def _unnorm_log_posterior(self, f=None):
         if f is None: f = self._fMAP
         return self._log_likelihood(f) + self._log_prior(f)
 
@@ -130,7 +136,7 @@ If query is None, two points of the last query are compared.
         if f is None: f = self._fMAP
         return -np.linalg.solve(self._kernel(),f)
 
-    def _d_log_unnorm_posterior(self, f=None):
+    def _d_unnorm_log_posterior(self, f=None):
         if f is None: f = self._fMAP
         return self._d_log_likelihood(f) + self._d_log_prior(f)
 
@@ -150,28 +156,6 @@ If query is None, two points of the last query are compared.
         cdf = norm.cdf(zk)
         return np.tensordot(sijk, -pdf**2/cdf**2-zk*pdf/cdf,axes=([2],[0]))
 
-    def _ddd_log_likelihood(self, f=None):
-        if f is None: f = self._fMAP
-        k = len(self._u)
-        zk = (f[np.array(self._u)]-f[np.array(self._v)])/(np.sqrt(2)*self._sgm)
-        sik = np.zeros((len(f),k))
-        sik[self._u,np.arange(k)] =  1/(np.sqrt(2)*self._sgm)
-        sik[self._v,np.arange(k)] = -1/(np.sqrt(2)*self._sgm)
-        sijk = np.tensordot(sik,sik,axes=0)[:,np.arange(k),:,np.arange(k)].swapaxes(0,2)
-        # sijlk[i,j,l,k] = sik[i,k]*si[j,k]*si[l,k]
-        sijlk = np.tensordot(sijk,sik,axes=0)[:,:,np.arange(k),:,np.arange(k)].swapaxes(0,3)
-        pdf = norm.pdf(zk)
-        cdf = norm.cdf(zk)
-        return np.tensordot(sijlk, zk*pdf**2/cdf**2 - 2*pdf**3/cdf**3 + (pdf*zk**2*pdf)/cdf, axes=([3,0]))
-
-    def _dd_log_prior(self, f=None):
-        if f is None: f = self._fMAP
-        return -np.linalg.inv(self._kernel())
-
-    def _dd_log_unnorm_posterior(self, f=None):
-        if f is None: f = self._fMAP
-        return self._dd_log_likelihood(f) + self._dd_log_prior(f)
-
     def _argmax_posterior(self):
         def obj(f):
             return f - np.matmul(self._kernel(), self._d_log_likelihood(f))
@@ -190,52 +174,9 @@ If query is None, two points of the last query are compared.
         self.lns = lns
         self._maximize_posterior()
         m = np.identity(len(self._x))+np.matmul(self._kernel(),-self._dd_log_likelihood())
-        s = self._log_unnorm_posterior()
+        s = self._unnorm_log_posterior()
         t = -0.5*np.log(np.linalg.det(m))
         return s+t
-
-    def _d_log_marginal_likelihood_lng(self, lns, lng):
-        raise NotImplementedError()
-        self.lng = lng
-        self.lns = lns
-        self._maximize_posterior()
-        n = len(self._x)
-        alpha = np.linalg.solve(self._kernel(), self._fMAP)
-        dg = self._kernel.d_gamma()
-        lam = -self._dd_log_likelihood()
-        m = np.linalg.solve(np.identity(n)+
-                            np.matmul(self._kernel(),lam),
-                            np.matmul(dg,lam))
-        s = 0.5*self._sgm*np.dot(alpha, np.matmul(dg,alpha))
-        t = -0.5*self._sgm*np.trace(m)
-        return s+t
-
-    def _d_log_marginal_likelihood_lns(self, lns, lng):
-        raise NotImplementedError()
-        self.lng = lng
-        self.lns = lns
-        self._maximize_posterior()
-        n = len(self._x)
-        k = len(self._u)
-        f = self._fMAP
-        zk = (f[np.array(self._u)]-f[np.array(self._v)])/(np.sqrt(2)*self._sgm)
-        pdf = norm.pdf(zk)
-        cdf = norm.cdf(zk)
-        r = pdf/cdf
-        sik = np.zeros((n,k))
-        sik[self._u,np.arange(k)] =  1
-        sik[self._v,np.arange(k)] = -1
-        # sijk[i,j,k] = sik[i,k]*sjk[j,k]
-        sijk = np.tensordot(sik,sik,axes=0)[:,np.arange(k),:,np.arange(k)].swapaxes(0,2)
-        dL_ds = 0.5*np.tensordot(sijk,
-                                 (zk**3-3*zk)*r-(2+3*zk**2)*r**2+2*zk*r**3,
-                                 axes=([2,0]))/(self._sgm**3)
-        m = np.linalg.solve(np.identity(n)+
-                            np.matmul(self._kernel(),-self._dd_log_likelihood()),
-                            np.matmul(self._kernel(),dL_ds))
-        s = self._sgm*np.sum(-zk*r/self._sgm)
-        t = -0.5*self._sgm*np.trace(m)
-        return  s+t
 
     def _argmax_marginal_likelihood(self, x0=None, n_iter=10):
         def obj(theta):
@@ -261,33 +202,34 @@ If query is None, two points of the last query are compared.
     def _mean(self, x):
         ks = self._kernel(self._x,x)
         return np.matmul(ks.T,
-                         np.linalg.solve(self._kernel(self._x,self._x),self._fMAP))
+                         np.linalg.solve(self._kernel(),self._fMAP))
 
     def _sd(self, x):
         kss = self._kernel(x,x)
         ks = self._kernel(self._x,x)
         L = -self._dd_log_likelihood()
         #beta =np.linalg.solve(np.identity(len(self._x))+
-        #                      np.matmul(L, self._kernel(self._x,self._x)),
+        #                      np.matmul(L, self._kernel()),
         #                      np.matmul(L,ks))
-        beta = np.linalg.solve(self._kernel(self._x,self._x), ks)
+        beta = np.linalg.solve(self._kernel(), ks)
         return np.sqrt(np.diag(kss - np.matmul(ks.T, beta)))
 
     def _expected_improvement(self,x):
         mean_max = np.max(self._fMAP)
         mean = self._mean(x)
         sd = self._sd(x)
-        cdf = norm.cdf((mean_max-mean)/sd)
+        ind = sd > 0
+        cdf = np.zeros(mean.shape)
+        cdf[ind] = norm.cdf((mean_max-mean[ind])/sd[ind])
         x_ei = (mean-mean_max)*cdf+sd*cdf
-        #x_ei[np.sum((np.array(self._x)-x_ei.reshape(1,-1))**2,axis=1)  < 1e-5] = 0
+        #x_ei = (mean_max-mean)*cdf+sd*cdf
         return x_ei
-
 
     def _argmax_expected_improvement(self):
         def obj(x, user_data):
             return (-self._expected_improvement([x]),0)
         x, _, err = DIRECT.solve(obj, self._bound[:,0], self._bound[:,1],
-                                 maxf=10000, algmethod=1)
+                                 maxf=1000, algmethod=1)
         assert np.all(np.sum((x-np.array(self._x))**2,axis=1) > 1e-5)
         return x
 
@@ -316,24 +258,30 @@ class RBF():
 
     @X.setter
     def X(self, X):
-        self(X=X)
+        self._X = X
+        self._ssd = euclidean_distances(self._X, self._Y, squared=True)
+        self._K = np.exp(-self._gamma*self._ssd)
+
     @Y.setter
     def Y(self, Y):
-        self(Y=Y)
+        self._Y = Y
+        self._ssd = euclidean_distances(self._X, self._Y, squared=True)
+        self._K = np.exp(-self._gamma*self._ssd)
+
     @gamma.setter
     def gamma(self, gamma):
-        self(gamma=gamma)
+        self._gamma = gamma
+        self._K = np.exp(-self._gamma*self._ssd)
 
     def __call__(self, X=None, Y=None, gamma=None):
         if X is None and Y is None and gamma is None: return self._K
-        if X is not None: self._X = X
-        if Y is not None: self._Y = Y
-        if gamma is not None: self._gamma = gamma
-        assert self._gamma > 0
-        self._ssd = euclidean_distances(self._X, self._Y, squared=True)
-        self._K = np.exp(-self._gamma*self._ssd)
-        return self._K
+        if X is None: X = self._X
+        if Y is None: Y = self._Y
+        if gamma is None: gamma = self._gamma
+        assert gamma > 0
+        ssd = euclidean_distances(X, Y, squared=True)
+        return np.exp(-gamma*ssd)
 
     def d_gamma(self, gamma=None):
-        self(gamma=gamma)
-        return -self._ssd*self._K
+        if gamma is None: gamma = self._gamma
+        return -self._ssd*np.exp(-gamma*self._ssd)
