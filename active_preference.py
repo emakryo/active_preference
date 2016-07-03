@@ -2,7 +2,7 @@ import numpy as np
 import scipy as sp
 import DIRECT
 from scipy.stats import norm
-from sklearn.metrics.pairwise import pairwise_kernels, euclidean_distances
+from sklearn.metrics.pairwise import euclidean_distances
 
 class ActivePreference():
     """
@@ -32,6 +32,10 @@ Return most informative two points to compare
             self._last_query = self._bound[:,0], self._bound[:,1]
         else:
             x_ie = self._argmax_expected_improvement()
+
+            if np.any(np.sum((x_ie-np.array(self._x))**2,axis=1) < 1e-5):
+                raise Exception("Maximum expected improvement is duplicated")
+
             x_max = self._x[np.argmax(self._fMAP)]
             self._last_query = x_ie, x_max
 
@@ -42,7 +46,6 @@ Return most informative two points to compare
 Answer to the query. choice is 0 (first item) or 1 (second item).
 If query is None, two points of the last query are compared.
         """
-
         if query is None:
             query = self._last_query
         assert len(query) == 2
@@ -208,9 +211,9 @@ If query is None, two points of the last query are compared.
         kss = self._kernel(x,x)
         ks = self._kernel(self._x,x)
         L = -self._dd_log_likelihood()
-        #beta =np.linalg.solve(np.identity(len(self._x))+
-        #                      np.matmul(L, self._kernel()),
-        #                      np.matmul(L,ks))
+        #beta=np.linalg.solve(np.identity(len(self._x))+
+        #                     np.matmul(L, self._kernel()),
+        #                     np.matmul(L,ks))
         beta = np.linalg.solve(self._kernel(), ks)
         return np.sqrt(np.diag(kss - np.matmul(ks.T, beta)))
 
@@ -228,9 +231,8 @@ If query is None, two points of the last query are compared.
     def _argmax_expected_improvement(self):
         def obj(x, user_data):
             return (-self._expected_improvement([x]),0)
-        x, _, err = DIRECT.solve(obj, self._bound[:,0], self._bound[:,1],
+        x, _, _ = DIRECT.solve(obj, self._bound[:,0], self._bound[:,1],
                                  maxf=1000, algmethod=1)
-        assert np.all(np.sum((x-np.array(self._x))**2,axis=1) > 1e-5)
         return x
 
 

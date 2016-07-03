@@ -106,17 +106,16 @@ def test2D():
         x0, x1 = model.query()
         if v(x0) > v(x1): model.prefer(0)
         else: model.prefer(1)
-        #plt.clf()
-        #plt.contour(x,y,model._expected_improvement(w).reshape(x.shape))
-        #plt.show()
+        plt.clf()
+        plt.contour(x,y,model._expected_improvement(w).reshape(x.shape))
+        plt.show()
 
-    mean = model._mean(w).reshape(x.shape)
-    plt.clf()
-    plt.contour(x,y,mean)
-    plt.show()
+    #mean = model._mean(w).reshape(x.shape)
+    #plt.clf()
+    #plt.contour(x,y,mean)
+    #plt.show()
 
     #print(np.argmax(z), np.argmax(mean))
-
 
 if __name__ == "__main__":
     test2D()
