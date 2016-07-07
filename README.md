@@ -5,4 +5,4 @@
 ### modification
 
 * without hyperparameter optimization by empirical Bayes
-* variance prediction ($\Sigma^{-1}$ instead of $(\Sigma + \Lambda_{MAP}^{-1})^{-1}$)
+* variance prediction ($K^{-1}$ instead of $(K + C_{MAP}^{-1})^{-1}$)

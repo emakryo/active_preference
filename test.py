@@ -21,7 +21,7 @@ def sample2D(x):
     return np.max([np.zeros(y.shape),y],axis=0)
 
 def test1D():
-    model = ActivePreference([[0,1]])
+    model = ActivePreference([[0,1]], sgm=0.01,gam=10)
 
     #x = np.linspace(0,1,5).reshape(-1,1)
     #i = []
@@ -118,4 +118,4 @@ def test2D():
     #print(np.argmax(z), np.argmax(mean))
 
 if __name__ == "__main__":
-    test2D()
+    test1D()

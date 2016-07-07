@@ -8,17 +8,19 @@ class ActivePreference():
     """
 Model for active preference learning.
     """
-    def __init__(self, bound):
+    def __init__(self, bound, sgm=0.01, gam=10):
         self._bound = np.array(bound)
         assert len(self._bound.shape) == 2
         assert self._bound.shape[1] == 2
+        assert sgm > 0
+        assert gam > 0
         self._ndim = self._bound.shape[0]
         self._x = []
         self._u = []
         self._v = []
         self._last_query = None
-        self._sgm = 0.01
-        self._kernel = RBF([[0]], gamma=10/self._ndim)
+        self._sgm = sgm
+        self._kernel = RBF([[0]], gamma=gam)
 
 
     def query(self):
@@ -131,9 +133,9 @@ If query is None, two points of the last query are compared.
         k = len(self._u)
         zk = (f[np.array(self._u)]-f[np.array(self._v)])/(np.sqrt(2)*self._sgm)
         sik = np.zeros((len(f),k))
-        sik[self._u,np.arange(k)] = 1/(np.sqrt(2)*self._sgm)
-        sik[self._v,np.arange(k)] = -1/(np.sqrt(2)*self._sgm)
-        return np.matmul(sik, norm.pdf(zk)/norm.cdf(zk))
+        sik[self._u,np.arange(k)] = 1
+        sik[self._v,np.arange(k)] = -1
+        return np.matmul(sik, norm.pdf(zk)/norm.cdf(zk))/(np.sqrt(2)*self._sgm)
 
     def _d_log_prior(self, f=None):
         if f is None: f = self._fMAP
@@ -147,17 +149,16 @@ If query is None, two points of the last query are compared.
         if f is None: f = self._fMAP
         k = len(self._u)
         zk = (f[np.array(self._u)]-f[np.array(self._v)])/(np.sqrt(2)*self._sgm)
-        # sik[i,k] = 1/(sqrt(2)*sgm) if x[i] == x[u[k]]
-        #          = -1/(sqrt(2)*sgm) if x[i] == x[v[k]]
+        # sik[i,k] = 1 if x[i] == x[u[k]]
+        #          = -1 if x[i] == x[v[k]]
         #          = 0                otherwise
         sik = np.zeros((len(f),k))
-        sik[self._u,np.arange(k)] =  1/(np.sqrt(2)*self._sgm)
-        sik[self._v,np.arange(k)] = -1/(np.sqrt(2)*self._sgm)
-        # sijk[i,j,k] = sik[i,k]*sjk[j,k]
-        sijk = np.tensordot(sik,sik,axes=0)[:,np.arange(k),:,np.arange(k)].swapaxes(0,2)
+        sik[self._u,np.arange(k)] =  1
+        sik[self._v,np.arange(k)] = -1
+        sijk = sik.reshape(-1,1,k)*sik.reshape(1,-1,k)
         pdf = norm.pdf(zk)
         cdf = norm.cdf(zk)
-        return np.tensordot(sijk, -pdf**2/cdf**2-zk*pdf/cdf,axes=([2],[0]))
+        return np.tensordot(sijk, -pdf**2/cdf**2-zk*pdf/cdf,axes=([2],[0]))/(2*self._sgm**2)
 
     def _argmax_posterior(self):
         def obj(f):
@@ -204,8 +205,7 @@ If query is None, two points of the last query are compared.
 
     def _mean(self, x):
         ks = self._kernel(self._x,x)
-        return np.matmul(ks.T,
-                         np.linalg.solve(self._kernel(),self._fMAP))
+        return np.matmul(ks.T, np.linalg.solve(self._kernel(),self._fMAP))
 
     def _sd(self, x):
         kss = self._kernel(x,x)
@@ -215,7 +215,9 @@ If query is None, two points of the last query are compared.
         #                     np.matmul(L, self._kernel()),
         #                     np.matmul(L,ks))
         beta = np.linalg.solve(self._kernel(), ks)
-        return np.sqrt(np.diag(kss - np.matmul(ks.T, beta)))
+        sd = np.sqrt(np.diag(kss - np.matmul(ks.T, beta)))
+        sd[np.isnan(sd)] = 0
+        return sd
 
     def _expected_improvement(self,x):
         mean_max = np.max(self._fMAP)
