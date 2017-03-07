@@ -84,11 +84,12 @@ def test1D():
         mean = model._mean(x)
         sd = model._sd(x)
         plt.clf()
-        plt.plot(x,mean)
-        plt.plot(x,mean+sd)
-        plt.plot(x,mean-sd)
-        plt.plot(model._x,model._fMAP,"ro")
-        plt.plot(x, model._expected_improvement(x))
+        plt.plot(x,mean,label='mean')
+        plt.plot(x,mean+sd,label='+1 SD')
+        plt.plot(x,mean-sd,label='-1 SD')
+        plt.plot(model._x,model._fMAP,"ro",label='predicted utility')
+        plt.plot(x, model._expected_improvement(x),label='predicted EI')
+        plt.legend()
         plt.show()
 
 def test2D():
@@ -98,9 +99,9 @@ def test2D():
     x,y = np.meshgrid(np.linspace(0,1,50),np.linspace(0,1,50))
     w = np.array([x.flatten(),y.flatten()]).T
     z = v(w).reshape(50,50)
-    #plt.clf()
-    #plt.contour(x,y,z)
-    #plt.show()
+    plt.clf()
+    plt.contour(x,y,z)
+    plt.show()
 
     for i in range(20):
         x0, x1 = model.query()
@@ -117,5 +118,18 @@ def test2D():
 
     #print(np.argmax(z), np.argmax(mean))
 
+def testHD():
+    import random
+    model = ActivePreference([[0,1]]*50)
+    for i in range(50):
+        x0, x1 = model.query()
+        print(sum((x0-x1)**2))
+        if random.random() > 0.5:
+            model.prefer(0)
+            print('<-')
+        else:
+            model.prefer(1)
+            print('->')
+
 if __name__ == "__main__":
-    test1D()
+    testHD()

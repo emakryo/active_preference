@@ -1,6 +1,5 @@
 import numpy as np
-import scipy as sp
-import DIRECT
+from scipy.optimize import basinhopping, fsolve
 from scipy.stats import norm
 from sklearn.metrics.pairwise import euclidean_distances
 
@@ -8,7 +7,14 @@ class ActivePreference():
     """
 Model for active preference learning.
     """
-    def __init__(self, bound, sgm=0.01, gam=10):
+    def __init__(self, bound, sgm=0.01, gam=10, use_direct=True):
+        try:
+            import DIRECT
+        except(ImportError):
+            self.use_direct = False
+        else:
+            self.use_direct = use_direct
+
         self._bound = np.array(bound)
         assert len(self._bound.shape) == 2
         assert self._bound.shape[1] == 2
@@ -168,7 +174,7 @@ If query is None, two points of the last query are compared.
             return np.identity(len(f)) -\
                 np.matmul(self._kernel(), self._dd_log_likelihood(f))
 
-        return sp.optimize.fsolve(obj, np.zeros(len(self._x)), fprime=dobj)
+        return fsolve(obj, np.zeros(len(self._x)), fprime=dobj)
 
     def _maximize_posterior(self):
         self._fMAP = self._argmax_posterior()
@@ -231,10 +237,20 @@ If query is None, two points of the last query are compared.
         return x_ei
 
     def _argmax_expected_improvement(self):
-        def obj(x, user_data):
-            return (-self._expected_improvement([x]),0)
-        x, _, _ = DIRECT.solve(obj, self._bound[:,0], self._bound[:,1],
-                                 maxf=1000, algmethod=1)
+        def obj(x):
+            return -self._expected_improvement([x])
+
+        if self.use_direct:
+        # use DIRECT algorithm
+            x, _, _ = DIRECT.solve(obj, self._bound[:,0], self._bound[:,1],
+                                     maxf=1000, algmethod=1)
+
+        else:
+            # use basinhopping
+            res = basinhopping(obj, (self._bound[:,0]+self._bound[:,1]),
+                    minimizer_kwargs={'bounds':self._bound})
+            x = res.x
+
         return x
 
 
